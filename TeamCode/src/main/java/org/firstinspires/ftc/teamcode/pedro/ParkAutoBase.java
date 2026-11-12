@@ -41,10 +41,10 @@ import org.firstinspires.ftc.robotcore.external.navigation.Position;
  * the robot stops and holds its spot. When the reading stays clear for
  * CLEAR_TIME_S, it starts again from wherever it is.
  *
- * FRONT: the Limelight on the front is used as the front "distance sensor".
- * A Limelight can only measure distance to an APRILTAG it can see, not to a
- * plain wall or another robot. So the front check works only when a tag is
- * in view. Pipeline LIMELIGHT_PIPELINE must be an AprilTag pipeline.
+ * FRONT: uses a front REV 2m sensor (FRONT_SENSOR) if one is configured,
+ * plus the Limelight. The Limelight can only measure distance to an APRILTAG
+ * it can see, not to a plain wall or another robot, so the front 2m sensor is
+ * the one that catches walls and robots. The closer of the two readings wins. Pipeline LIMELIGHT_PIPELINE must be an AprilTag pipeline.
  */
 public abstract class ParkAutoBase extends OpMode {
 
@@ -67,6 +67,7 @@ public abstract class ParkAutoBase extends OpMode {
     public static double CLEAR_TIME_S = 0.5;
 
     /** Robot configuration names. Match these in the Driver Station config. */
+    public static String FRONT_SENSOR = "distFront";
     public static String BACK_SENSOR = "distBack";
     public static String LEFT_SENSOR = "distLeft";
     public static String RIGHT_SENSOR = "distRight";
@@ -92,7 +93,7 @@ public abstract class ParkAutoBase extends OpMode {
     private Pose startPose, leg1End, leg2End;
     private Pose currentTarget;
 
-    private DistanceSensor distBack, distLeft, distRight;
+    private DistanceSensor distFront, distBack, distLeft, distRight;
     private Limelight3A limelight;
     private boolean blocked = false;
     private String blockedBy = "";
@@ -134,6 +135,10 @@ public abstract class ParkAutoBase extends OpMode {
      * closest visible AprilTag is, in inches. Huge number if no tag is seen.
      */
     private double readFront() {
+        return Math.min(read(distFront), readFrontCamera());
+    }
+
+    private double readFrontCamera() {
         if (limelight == null) return Double.MAX_VALUE;
         LLResult result = limelight.getLatestResult();
         if (result == null || !result.isValid() || result.getStaleness() > 200) return Double.MAX_VALUE;
@@ -171,7 +176,8 @@ public abstract class ParkAutoBase extends OpMode {
         double left = (-dx * Math.sin(h) + dy * Math.cos(h)) / len;
 
         // A sensor "watches" if we are moving mostly toward the side it faces.
-        if (fwd > 0.5 && readFront() < SAFE_DISTANCE_IN) return FRONT_CAMERA;
+        if (fwd > 0.5 && read(distFront) < SAFE_DISTANCE_IN) return FRONT_SENSOR;
+        if (fwd > 0.5 && readFrontCamera() < SAFE_DISTANCE_IN) return FRONT_CAMERA;
         if (-fwd > 0.5 && read(distBack) < SAFE_DISTANCE_IN) return BACK_SENSOR;
         if (left > 0.5 && read(distLeft) < SAFE_DISTANCE_IN) return LEFT_SENSOR;
         if (-left > 0.5 && read(distRight) < SAFE_DISTANCE_IN) return RIGHT_SENSOR;
@@ -181,6 +187,7 @@ public abstract class ParkAutoBase extends OpMode {
     @Override
     public void init() {
         follower = Constants.create(hardwareMap);
+        distFront = getSensor(FRONT_SENSOR);
         distBack = getSensor(BACK_SENSOR);
         distLeft = getSensor(LEFT_SENSOR);
         distRight = getSensor(RIGHT_SENSOR);
@@ -204,7 +211,8 @@ public abstract class ParkAutoBase extends OpMode {
 
     @Override
     public void init_loop() {
-        telemetry.addData("Front tag (in)", "%.1f", Math.min(readFront(), 999));
+        telemetry.addData("Front 2m (in)", "%.1f", Math.min(read(distFront), 999));
+        telemetry.addData("Front tag (in)", "%.1f", Math.min(readFrontCamera(), 999));
         telemetry.addData("Back (in)", "%.1f", read(distBack));
         telemetry.addData("Left (in)", "%.1f", read(distLeft));
         telemetry.addData("Right (in)", "%.1f", read(distRight));
@@ -263,7 +271,7 @@ public abstract class ParkAutoBase extends OpMode {
         telemetry.addData("State", blocked ? "STOPPED: " + blockedBy + " < " + SAFE_DISTANCE_IN + " in" : state);
         telemetry.addData("X / Y (in)", "%.1f / %.1f", pose.x(), pose.y());
         telemetry.addData("Heading (deg)", "%.1f", Math.toDegrees(pose.heading()));
-        telemetry.addData("Front tag / Back / Left / Right (in)", "%.1f / %.1f / %.1f / %.1f",
+        telemetry.addData("Front / Back / Left / Right (in)", "%.1f / %.1f / %.1f / %.1f",
                 Math.min(readFront(), 999), Math.min(read(distBack), 999), Math.min(read(distLeft), 999), Math.min(read(distRight), 999));
         telemetry.update();
     }

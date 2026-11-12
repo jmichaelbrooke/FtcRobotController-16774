@@ -4,11 +4,15 @@ import static com.pedropathing.api.Paths.line;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.math.Pose;
+import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Position;
 
 /**
  * Shared code for "Red Park Auto" and "Blue Park Auto". No shooting: the robot
@@ -35,8 +39,12 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
  * SAFETY (distance sensors): every loop we look at the sensors that point in
  * the direction the robot is moving. If one reads less than SAFE_DISTANCE_IN
  * the robot stops and holds its spot. When the reading stays clear for
- * CLEAR_TIME_S, it starts again from wherever it is. The robot has no FRONT
- * sensor, so the plan never drives forward toward anything.
+ * CLEAR_TIME_S, it starts again from wherever it is.
+ *
+ * FRONT: the Limelight on the front is used as the front "distance sensor".
+ * A Limelight can only measure distance to an APRILTAG it can see, not to a
+ * plain wall or another robot. So the front check works only when a tag is
+ * in view. Pipeline LIMELIGHT_PIPELINE must be an AprilTag pipeline.
  */
 public abstract class ParkAutoBase extends OpMode {
 
@@ -62,6 +70,10 @@ public abstract class ParkAutoBase extends OpMode {
     public static String BACK_SENSOR = "distBack";
     public static String LEFT_SENSOR = "distLeft";
     public static String RIGHT_SENSOR = "distRight";
+    /** Limelight 3A configuration name (front of robot). */
+    public static String FRONT_CAMERA = "limelight";
+    /** Limelight pipeline number to use. Must be set up as AprilTag (fiducial) in the Limelight web page. */
+    public static int LIMELIGHT_PIPELINE = 0;
 
     // ---------------- Alliance-specific part ----------------
 
@@ -81,6 +93,7 @@ public abstract class ParkAutoBase extends OpMode {
     private Pose currentTarget;
 
     private DistanceSensor distBack, distLeft, distRight;
+    private Limelight3A limelight;
     private boolean blocked = false;
     private String blockedBy = "";
     private final ElapsedTime clearTimer = new ElapsedTime();
@@ -116,6 +129,23 @@ public abstract class ParkAutoBase extends OpMode {
         return d;
     }
 
+    /**
+     * Front distance from the Limelight: how far in front of the camera the
+     * closest visible AprilTag is, in inches. Huge number if no tag is seen.
+     */
+    private double readFront() {
+        if (limelight == null) return Double.MAX_VALUE;
+        LLResult result = limelight.getLatestResult();
+        if (result == null || !result.isValid() || result.getStaleness() > 200) return Double.MAX_VALUE;
+        double closest = Double.MAX_VALUE;
+        for (LLResultTypes.FiducialResult tag : result.getFiducialResults()) {
+            Position p = tag.getTargetPoseCameraSpace().getPosition().toUnit(DistanceUnit.INCH);
+            // Camera space: z = straight out of the lens.
+            if (p.z > 0 && p.z < closest) closest = p.z;
+        }
+        return closest;
+    }
+
     /** Starts (or restarts) a straight line from where the robot is now to the target. */
     private void driveTo(Pose target) {
         currentTarget = target;
@@ -141,6 +171,7 @@ public abstract class ParkAutoBase extends OpMode {
         double left = (-dx * Math.sin(h) + dy * Math.cos(h)) / len;
 
         // A sensor "watches" if we are moving mostly toward the side it faces.
+        if (fwd > 0.5 && readFront() < SAFE_DISTANCE_IN) return FRONT_CAMERA;
         if (-fwd > 0.5 && read(distBack) < SAFE_DISTANCE_IN) return BACK_SENSOR;
         if (left > 0.5 && read(distLeft) < SAFE_DISTANCE_IN) return LEFT_SENSOR;
         if (-left > 0.5 && read(distRight) < SAFE_DISTANCE_IN) return RIGHT_SENSOR;
@@ -153,6 +184,13 @@ public abstract class ParkAutoBase extends OpMode {
         distBack = getSensor(BACK_SENSOR);
         distLeft = getSensor(LEFT_SENSOR);
         distRight = getSensor(RIGHT_SENSOR);
+        limelight = hardwareMap.tryGet(Limelight3A.class, FRONT_CAMERA);
+        if (limelight == null) {
+            telemetry.addLine("WARNING: no Limelight named \"" + FRONT_CAMERA + "\" (front safety off)");
+        } else {
+            limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
+            limelight.start();
+        }
         buildPoses();
         follower.setPose(startPose);
 
@@ -166,6 +204,7 @@ public abstract class ParkAutoBase extends OpMode {
 
     @Override
     public void init_loop() {
+        telemetry.addData("Front tag (in)", "%.1f", Math.min(readFront(), 999));
         telemetry.addData("Back (in)", "%.1f", read(distBack));
         telemetry.addData("Left (in)", "%.1f", read(distLeft));
         telemetry.addData("Right (in)", "%.1f", read(distRight));
@@ -224,8 +263,8 @@ public abstract class ParkAutoBase extends OpMode {
         telemetry.addData("State", blocked ? "STOPPED: " + blockedBy + " < " + SAFE_DISTANCE_IN + " in" : state);
         telemetry.addData("X / Y (in)", "%.1f / %.1f", pose.x(), pose.y());
         telemetry.addData("Heading (deg)", "%.1f", Math.toDegrees(pose.heading()));
-        telemetry.addData("Back / Left / Right (in)", "%.1f / %.1f / %.1f",
-                Math.min(read(distBack), 999), Math.min(read(distLeft), 999), Math.min(read(distRight), 999));
+        telemetry.addData("Front tag / Back / Left / Right (in)", "%.1f / %.1f / %.1f / %.1f",
+                Math.min(readFront(), 999), Math.min(read(distBack), 999), Math.min(read(distLeft), 999), Math.min(read(distRight), 999));
         telemetry.update();
     }
 

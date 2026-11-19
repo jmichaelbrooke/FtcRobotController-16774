@@ -53,6 +53,9 @@ public abstract class ParkAutoBase extends OpMode {
     /** Park at the corner nearest the AUDIENCE (true) or the far corner (false). */
     public static boolean PARK_AT_AUDIENCE_END = true;
 
+    /** Driving speed as a fraction of full speed. 0.5 = half speed, 1.0 = full speed. */
+    public static double DRIVE_SPEED = 0.5;
+
     /** Half of the robot's front-to-back length, in inches. 18 in robot -> 9. */
     public static double ROBOT_HALF_LENGTH = 9.0;
     /** Half of the robot's side-to-side width, in inches. */
@@ -155,7 +158,10 @@ public abstract class ParkAutoBase extends OpMode {
     private void driveTo(Pose target) {
         currentTarget = target;
         Pose here = follower.pose();
-        follower.follow(line(here, target).constant(target.heading()));
+        // with(...maxPathSpeed.at(...)) caps Pedro's speed on this path only.
+        follower.follow(line(here, target)
+                .constant(target.heading())
+                .with(Constants.foresightConfig.maxPathSpeed.at(DRIVE_SPEED)));
     }
 
     /**

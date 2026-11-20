@@ -93,21 +93,27 @@ public class OneBigCode extends OpMode {
         }
 
         // --- Mechanism Logic (Gamepad 2) ---
+        // CONTROLLER MAP (gamepad 2) -- hold the button, let go = stop
+        //   A  = servo_rot forward        B  = servo_rot back
+        //   X  = servo_feed forward       Y  = big wheel forward
+        //   LB = silly forward            RB = silly back
+        //   LT = UpAndDown negative       RT = UpAndDown positive
+        // Change this map with the team before changing the code below.
 
-        // Bench Motor ("silly")
-        if (gamepad2.a) {
-            bench.setMotorSpeed(-1.0);
+        // Bench Motor ("silly"): LB = forward, RB = back
+        if (gamepad2.left_bumper) {
+            bench.setMotorSpeed(-1.0);   // same direction A used to run it
+        } else if (gamepad2.right_bumper) {
+            bench.setMotorSpeed(1.0);
         } else {
             bench.setMotorSpeed(0);
         }
 
-        // Bench Servo ("servo_rot")
-        // Left bumper = -1, right bumper or B = +1, nothing pressed = stop.
-        // (B used to be a separate block that reset this to 0 every loop, so the bumpers never worked.)
-        if (gamepad2.left_bumper) {
-            bench.setServoRot(-1.0);
-        } else if (gamepad2.right_bumper || gamepad2.b) {
+        // Bench Servo ("servo_rot"): A = forward, B = back
+        if (gamepad2.a) {
             bench.setServoRot(1.0);
+        } else if (gamepad2.b) {
+            bench.setServoRot(-1.0);
         } else {
             bench.setServoRot(0);
         }
@@ -122,13 +128,10 @@ public class OneBigCode extends OpMode {
         }
 
         // BigWheel Motor ("massive_wheel")
-        // NOTE: the +1 direction used to be on X. It moved to D-pad Up so X can run servoFeed.
+        // Hold Y = forward, let go = stop. No reverse. (If it spins the wrong way, change 1.0 to -1.0.)
         if (gamepad2.y) {
-            bigWheel.setMotorSpeed(-1.0);
-            telemetry.addData("BigWheel", "ON (-1)");
-        } else if (gamepad2.dpad_up) {
             bigWheel.setMotorSpeed(1.0);
-            telemetry.addData("BigWheel", "ON (1)");
+            telemetry.addData("BigWheel", "ON");
         } else {
             bigWheel.setMotorSpeed(0);
             telemetry.addData("BigWheel", "OFF");
